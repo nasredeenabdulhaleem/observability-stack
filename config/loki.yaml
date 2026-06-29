@@ -41,9 +41,6 @@ query_range:
 limits_config:
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
-  max_query_series: 10000
-  # How long to retain logs (0s = forever, or e.g. 720h = 30 days)
-  retention_period: 0s
 
 # ─────────────────────────────────────────────────────────────
 # ruler is required by Loki but alertmanager is optional.
