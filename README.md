@@ -48,15 +48,9 @@ See `sdk/README.md` for full setup instructions per language.
 
 ## Deploy on Coolify
 
-### 1. Push to GitHub
+### 1. Fork this repo
 
-```bash
-git init
-git add .
-git commit -m "init: observability stack"
-git remote add origin https://github.com/YOUR_USERNAME/observability-stack.git
-git push -u origin main
-```
+Click **Fork** at the top of [this repository](https://github.com/nabdulhaleem/observability-stack) on GitHub.
 
 ### 2. Add to Coolify
 
