@@ -1,11 +1,11 @@
 # ═══════════════════════════════════════════════════════════════
 # sdk/compose-snippet.yml
 # ───────────────────────────────────────────────────────────────
-# Merge this into your app's docker-compose.yml to connect it
+# Merge this into your app's docker-compose.yaml to connect it
 # to the observability stack via the shared Docker network.
 #
 # HOW TO USE:
-#   Copy the relevant sections into your own docker-compose.yml.
+#   Copy the relevant sections into your own docker-compose.yaml.
 #   The observability stack must already be deployed first so the
 #   "observability" network exists before your app starts.
 #
@@ -16,7 +16,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ── 1. Declare the external network (top-level key) ──────────
-# Add this to the TOP LEVEL of your docker-compose.yml
+# Add this to the TOP LEVEL of your docker-compose.yaml
 networks:
   observability:
     external: true      # Already created by the observability stack

@@ -6,7 +6,7 @@
 # own internal metrics for monitoring the observability stack.
 #
 # Note: --web.enable-remote-write-receiver is passed as a CLI
-# flag in docker-compose.yml to accept pushed metrics.
+# flag in docker-compose.yaml to accept pushed metrics.
 # ═══════════════════════════════════════════════════════════════
 
 global:

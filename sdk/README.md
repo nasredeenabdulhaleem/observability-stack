@@ -18,7 +18,7 @@ For apps on the same server, the internal mode is preferred — no exposed port 
 
 ## Step 1 — Connect to the observability network (same server only)
 
-Copy the relevant blocks from `compose-snippet.yml` into your app's `docker-compose.yml`:
+Copy the relevant blocks from `compose-snippet.yml` into your app's `docker-compose.yaml`:
 
 ```yaml
 # Top-level networks block

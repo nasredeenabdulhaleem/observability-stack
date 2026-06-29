@@ -57,7 +57,7 @@ Click **Fork** at the top of [this repository](https://github.com/nabdulhaleem/o
 1. Coolify dashboard → your project → **New Resource → Application**
 2. Source: **GitHub** → select this repo
 3. Build Pack: **Docker Compose**
-4. Compose file location: `/docker-compose.yml`
+4. Compose file location: `/docker-compose.yaml`
 
 ### 3. Set environment variables
 
@@ -82,6 +82,34 @@ In Coolify's domain field, include the port: `https://grafana.yourdomain.com:300
 ### 5. Deploy
 
 Click **Deploy**. First boot takes ~2 minutes as Loki and Tempo initialize.
+
+---
+
+## Troubleshooting
+
+### Prometheus fails to start — "not a directory" mount error
+
+**Symptom:** Coolify logs show something like:
+```
+error mounting ".../config/prometheus.yml" ... not a directory
+```
+while Loki and Tempo (which also bind-mount config files) start fine.
+
+**Cause:** A previous failed deploy caused Docker to auto-create `config/prometheus.yml` as a *directory* on the host before the repo clone placed the real file there. The stale directory blocks all future deploys.
+
+**Fix:** SSH into your Coolify server and check:
+
+```bash
+ls -la /data/coolify/applications/<your-app-id>/config/
+```
+
+If `prometheus.yml` is listed as a directory (`drwx...`), remove it and redeploy:
+
+```bash
+rm -rf /data/coolify/applications/<your-app-id>/config/prometheus.yml
+```
+
+Then click **Redeploy** in Coolify.
 
 ---
 
@@ -128,7 +156,7 @@ OTEL_LOGS_EXPORTER=otlp
 SENTRY_DSN=http://KEY@errors.yourdomain.com/PROJECT_ID
 ```
 
-And add to each app's `docker-compose.yml` (for internal network access):
+And add to each app's `docker-compose.yaml` (for internal network access):
 
 ```yaml
 networks:
@@ -149,7 +177,7 @@ services:
 
 ```
 observability-stack/
-├── docker-compose.yml
+├── docker-compose.yaml
 ├── .env.example
 ├── .gitignore
 ├── README.md
