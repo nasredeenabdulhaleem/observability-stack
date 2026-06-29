@@ -1,0 +1,32 @@
+# ═══════════════════════════════════════════════════════════════
+# Grafana Dashboard Provider
+# ───────────────────────────────────────────────────────────────
+# Drop any dashboard JSON file into this same directory and
+# Grafana will pick it up automatically within 30 seconds.
+#
+# To add community dashboards:
+# 1. Go to grafana.com/grafana/dashboards
+# 2. Download the JSON
+# 3. Save it here as config/grafana/provisioning/dashboards/NAME.json
+# 4. Grafana auto-imports it on next check (no restart needed)
+#
+# Recommended dashboard IDs to import via Grafana UI (Dashboards → Import):
+#   3662  — Prometheus 2.0 Stats
+#   13639 — Node.js/NestJS API metrics
+#   15141 — NestJS overview
+#   14282 — Loki logs overview
+#   16098 — Tempo / traces overview
+# ═══════════════════════════════════════════════════════════════
+
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

@@ -1,0 +1,40 @@
+# ═══════════════════════════════════════════════════════════════
+# Prometheus Configuration
+# ───────────────────────────────────────────────────────────────
+# Metrics are pushed to Prometheus via the OTel Collector's
+# remote write exporter. This file also scrapes the collector's
+# own internal metrics for monitoring the observability stack.
+#
+# Note: --web.enable-remote-write-receiver is passed as a CLI
+# flag in docker-compose.yml to accept pushed metrics.
+# ═══════════════════════════════════════════════════════════════
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: observability
+
+scrape_configs:
+  # Scrape OTel Collector's own internal metrics
+  # (pipeline throughput, dropped spans, memory usage, etc.)
+  - job_name: otel-collector
+    static_configs:
+      - targets: ['otel-collector:8888']
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ─────────────────────────────────────────────────────────────
+  # Add your own scrape targets here as needed.
+  # Apps that expose a /metrics endpoint can be scraped directly
+  # instead of (or in addition to) pushing via OTel SDK.
+  #
+  # Example (NestJS with @willsoto/nestjs-prometheus):
+  # - job_name: my-nestjs-app
+  #   static_configs:
+  #     - targets: ['app-container-name:3000']
+  #   metrics_path: /metrics
+  # ─────────────────────────────────────────────────────────────

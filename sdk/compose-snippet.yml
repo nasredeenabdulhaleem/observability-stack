@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════
+# sdk/compose-snippet.yml
+# ───────────────────────────────────────────────────────────────
+# Merge this into your app's docker-compose.yml to connect it
+# to the observability stack via the shared Docker network.
+#
+# HOW TO USE:
+#   Copy the relevant sections into your own docker-compose.yml.
+#   The observability stack must already be deployed first so the
+#   "observability" network exists before your app starts.
+#
+# Two connectivity modes — pick one or use both:
+#
+#   INTERNAL  → http://otel-collector:4317   (same server, Docker network)
+#   EXTERNAL  → http://YOUR_SERVER_IP:4317   (any server, host port)
+# ═══════════════════════════════════════════════════════════════
+
+# ── 1. Declare the external network (top-level key) ──────────
+# Add this to the TOP LEVEL of your docker-compose.yml
+networks:
+  observability:
+    external: true      # Already created by the observability stack
+    name: observability
+
+# ── 2. Update your service(s) ────────────────────────────────
+# Add the network and env vars to each service you want to instrument.
+services:
+  your-app:                     # ← replace with your actual service name
+    image: your-app-image
+    networks:
+      - default                 # keep your existing default network
+      - observability           # add this to reach otel-collector
+    environment:
+      # ── OTel SDK config ───────────────────────────────────────
+      # These env vars are read automatically by all OTel SDKs.
+      # Change the service name per app — it's how Grafana filters.
+      - OTEL_SERVICE_NAME=my-app-name
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_DEPLOYMENT_ENVIRONMENT=production
+
+      # Internal endpoint (preferred when on the same server):
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # External endpoint (uncomment if on a different server):
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=http://YOUR_SERVER_IP:4317
+
+      # Which signals to send (remove any you don't need):
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+
+      # Propagation format (keep both for cross-service tracing):
+      - OTEL_PROPAGATORS=tracecontext,baggage
+
+      # ── GlitchTip error tracking ──────────────────────────────
+      # Set this to the DSN from your GlitchTip project settings:
+      - GLITCHTIP_DSN=http://KEY@errors.yourdomain.com/PROJECT_ID
+      # Most SDKs read SENTRY_DSN too (GlitchTip is Sentry-compatible):
+      - SENTRY_DSN=http://KEY@errors.yourdomain.com/PROJECT_ID
+
+# ── Full example with two services ───────────────────────────
+# services:
+#
+#   api:
+#     image: my-company/api:latest
+#     networks:
+#       - default
+#       - observability
+#     environment:
+#       - OTEL_SERVICE_NAME=my-company-api
+#       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+#       - OTEL_TRACES_EXPORTER=otlp
+#       - OTEL_METRICS_EXPORTER=otlp
+#       - OTEL_LOGS_EXPORTER=otlp
+#       - SENTRY_DSN=http://KEY@errors.yourdomain.com/1
+#
+#   worker:
+#     image: my-company/worker:latest
+#     networks:
+#       - default
+#       - observability
+#     environment:
+#       - OTEL_SERVICE_NAME=my-company-worker
+#       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+#       - OTEL_TRACES_EXPORTER=otlp
+#       - SENTRY_DSN=http://KEY@errors.yourdomain.com/1
+#
+# networks:
+#   observability:
+#     external: true
+#     name: observability

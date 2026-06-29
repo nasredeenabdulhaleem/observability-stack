@@ -1,0 +1,8 @@
+# Local environment file — never commit this
+.env
+*.local
+
+# Editor
+.DS_Store
+.vscode/
+.idea/

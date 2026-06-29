@@ -1,0 +1,96 @@
+# ═══════════════════════════════════════════════════════════════
+# OpenTelemetry Collector Configuration
+# ───────────────────────────────────────────────────────────────
+# Receives traces, metrics, and logs from all your apps via OTLP
+# and routes them to the right backend.
+#
+# Apps send to:
+#   gRPC → otel-collector:4317  (or SERVER_IP:4317 from other stacks)
+#   HTTP → otel-collector:4318  (or SERVER_IP:4318 from other stacks)
+# ═══════════════════════════════════════════════════════════════
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batch signals for efficiency before sending to backends
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  # Prevent OOM under high load
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  # ── Metrics → Prometheus ────────────────────────────────────
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # ── Logs → Loki ─────────────────────────────────────────────
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    tls:
+      insecure: true
+    default_labels_enabled:
+      exporter: false
+      job: true
+      level: true
+
+  # ── Traces → Tempo ──────────────────────────────────────────
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Debug: prints summary of received telemetry to collector logs
+  # Remove or set verbosity to "none" in production if too noisy
+  debug:
+    verbosity: basic
+
+extensions:
+  # Health check endpoint — used by Docker healthcheck
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Performance profiling (optional, access via localhost:1777)
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+  # zPages for live debugging (optional, access via localhost:55679)
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, pprof, zpages]
+
+  pipelines:
+    # ── Traces ────────────────────────────────────────────────
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+
+    # ── Metrics ───────────────────────────────────────────────
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+
+    # ── Logs ──────────────────────────────────────────────────
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [loki]

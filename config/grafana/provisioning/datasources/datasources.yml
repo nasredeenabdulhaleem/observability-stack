@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════
+# Grafana Data Sources — Auto-provisioned on startup
+# ───────────────────────────────────────────────────────────────
+# All three data sources are wired together:
+#   - Prometheus exemplars link to Tempo traces
+#   - Loki logs link to Tempo traces via traceID field
+#   - Tempo traces link back to Loki logs and Prometheus metrics
+# ═══════════════════════════════════════════════════════════════
+
+apiVersion: 1
+
+datasources:
+  # ── Prometheus (Metrics) ─────────────────────────────────────
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      # Link Prometheus exemplars to Tempo traces
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  # ── Loki (Logs) ──────────────────────────────────────────────
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      # Parse traceID from log lines and link to Tempo
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '(?:trace_id|traceID|TraceId)=?([a-f0-9]{32}|[a-f0-9]{16})'
+          name: TraceID
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View in Tempo'
+
+  # ── Tempo (Traces) ───────────────────────────────────────────
+  - name: Tempo
+    type: tempo
+    access: proxy
+    uid: tempo
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      httpMethod: GET
+      # Service graph (requires Prometheus + service.graph.* metrics)
+      serviceMap:
+        datasourceUid: prometheus
+      # TraceQL query editor
+      nodeGraph:
+        enabled: true
+      # Search logs alongside traces
+      lokiSearch:
+        datasourceUid: loki
+      # Jump from a trace span to related logs
+      traceToLogs:
+        datasourceUid: loki
+        mapTagNamesEnabled: true
+        tags:
+          - key: service.name
+            value: service
+          - key: deployment.environment
+            value: env
+      # Jump from a trace span to related metrics
+      traceToMetrics:
+        datasourceUid: prometheus
