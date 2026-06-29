@@ -87,29 +87,16 @@ Click **Deploy**. First boot takes ~2 minutes as Loki and Tempo initialize.
 
 ## Troubleshooting
 
-### Prometheus fails to start — "not a directory" mount error
+### "not a directory" mount error on first deploy
 
-**Symptom:** Coolify logs show something like:
+**Symptom:** Coolify logs show:
 ```
 error mounting ".../config/prometheus.yml" ... not a directory
 ```
-while Loki and Tempo (which also bind-mount config files) start fine.
 
-**Cause:** A previous failed deploy caused Docker to auto-create `config/prometheus.yml` as a *directory* on the host before the repo clone placed the real file there. The stale directory blocks all future deploys.
+**Cause:** Coolify's Docker Compose deployment pre-creates missing bind-mount sources as directories before the git clone runs. If a config file path doesn't exist yet, Docker creates a directory there — then git can't replace that directory with the actual file.
 
-**Fix:** SSH into your Coolify server and check:
-
-```bash
-ls -la /data/coolify/applications/<your-app-id>/config/
-```
-
-If `prometheus.yml` is listed as a directory (`drwx...`), remove it and redeploy:
-
-```bash
-rm -rf /data/coolify/applications/<your-app-id>/config/prometheus.yml
-```
-
-Then click **Redeploy** in Coolify.
+**This is fixed in the compose file** — all configs now mount the whole `./config/` directory (which Docker correctly pre-creates as a directory) and each service is pointed to its file via a `--config.file=` flag. If you were running an older version of this stack, pull the latest and redeploy.
 
 ---
 

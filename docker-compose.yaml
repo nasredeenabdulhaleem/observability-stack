@@ -42,8 +42,9 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     restart: unless-stopped
+    command: ["--config=/observability-config/otel-collector.yaml"]
     volumes:
-      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+      - ./config:/observability-config:ro
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"   # External: apps on other servers
       - "${OTEL_HTTP_PORT:-4318}:4318"   # External: apps on other servers (HTTP)
@@ -70,10 +71,10 @@ services:
     image: prom/prometheus:v2.51.2
     restart: unless-stopped
     volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config:/observability-config:ro
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--config.file=/observability-config/prometheus.yml'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-remote-write-receiver'
       - '--web.enable-lifecycle'
@@ -90,9 +91,9 @@ services:
     image: grafana/loki:2.9.7
     restart: unless-stopped
     volumes:
-      - ./config/loki.yaml:/etc/loki/config.yaml
+      - ./config:/observability-config:ro
       - loki-data:/loki
-    command: -config.file=/etc/loki/config.yaml
+    command: -config.file=/observability-config/loki.yaml
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
       interval: 10s
@@ -107,9 +108,9 @@ services:
     image: grafana/tempo:2.4.1
     restart: unless-stopped
     volumes:
-      - ./config/tempo.yaml:/etc/tempo/config.yaml
+      - ./config:/observability-config:ro
       - tempo-data:/var/tempo
-    command: -config.file=/etc/tempo/config.yaml
+    command: -config.file=/observability-config/tempo.yaml
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready || exit 1"]
       interval: 10s
@@ -131,11 +132,11 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Enable unified alerting
       - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_PATHS_PROVISIONING=/observability-config/grafana/provisioning
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config:/observability-config:ro
     depends_on:
       prometheus:
         condition: service_healthy
