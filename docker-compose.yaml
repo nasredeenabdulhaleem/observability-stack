@@ -23,6 +23,9 @@
 #
 # Coolify deployment:
 #   New Resource → Application → Docker Compose → GitHub → set env vars → assign domains → Deploy
+#
+# All service configs are embedded inline below via the `configs` top-level
+# key so no bind mounts or host filesystem state is required.
 # ═══════════════════════════════════════════════════════════════
 
 networks:
@@ -34,6 +37,249 @@ networks:
     name: observability
     driver: bridge
 
+# ═══════════════════════════════════════════════════════════════
+# Inline configs — embedded here so Coolify deployments work
+# without needing config files on the host filesystem.
+# Edit these directly to change service configuration.
+# ═══════════════════════════════════════════════════════════════
+configs:
+
+  prometheus_cfg:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+        external_labels:
+          stack: observability
+
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+            - targets: ['otel-collector:8888']
+
+        - job_name: prometheus
+          static_configs:
+            - targets: ['localhost:9090']
+
+        # Add your own scrape targets here. Example:
+        # - job_name: my-app
+        #   static_configs:
+        #     - targets: ['app-container-name:3000']
+        #   metrics_path: /metrics
+
+  loki_cfg:
+    content: |
+      auth_enabled: false
+
+      server:
+        http_listen_port: 3100
+        grpc_listen_port: 9096
+        log_level: warn
+
+      common:
+        instance_addr: 127.0.0.1
+        path_prefix: /loki
+        storage:
+          filesystem:
+            chunks_directory: /loki/chunks
+            rules_directory: /loki/rules
+        replication_factor: 1
+        ring:
+          kvstore:
+            store: inmemory
+
+      schema_config:
+        configs:
+          - from: 2020-10-24
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+
+      query_range:
+        results_cache:
+          cache:
+            embedded_cache:
+              enabled: true
+              max_size_mb: 100
+
+      limits_config:
+        ingestion_rate_mb: 16
+        ingestion_burst_size_mb: 32
+
+      ruler:
+        alertmanager_url: http://localhost:9093
+
+  tempo_cfg:
+    content: |
+      server:
+        http_listen_port: 3200
+        log_level: warn
+
+      distributor:
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
+
+      ingester:
+        max_block_duration: 5m
+
+      compactor:
+        compaction:
+          block_retention: 48h
+
+      storage:
+        trace:
+          backend: local
+          local:
+            path: /var/tempo/traces
+          wal:
+            path: /var/tempo/wal
+
+  otel_cfg:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        batch:
+          timeout: 1s
+          send_batch_size: 1024
+          send_batch_max_size: 2048
+        memory_limiter:
+          check_interval: 1s
+          limit_mib: 512
+          spike_limit_mib: 128
+
+      exporters:
+        prometheusremotewrite:
+          endpoint: http://prometheus:9090/api/v1/write
+          tls:
+            insecure: true
+          resource_to_telemetry_conversion:
+            enabled: true
+        loki:
+          endpoint: http://loki:3100/loki/api/v1/push
+          tls:
+            insecure: true
+          default_labels_enabled:
+            exporter: false
+            job: true
+            level: true
+        otlp/tempo:
+          endpoint: tempo:4317
+          tls:
+            insecure: true
+        debug:
+          verbosity: basic
+
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+        pprof:
+          endpoint: 0.0.0.0:1777
+        zpages:
+          endpoint: 0.0.0.0:55679
+
+      service:
+        extensions: [health_check, pprof, zpages]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [otlp/tempo]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [prometheusremotewrite]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [loki]
+
+  grafana_datasources:
+    content: |
+      apiVersion: 1
+
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          uid: prometheus
+          url: http://prometheus:9090
+          isDefault: true
+          editable: false
+          jsonData:
+            httpMethod: POST
+            exemplarTraceIdDestinations:
+              - name: trace_id
+                datasourceUid: tempo
+
+        - name: Loki
+          type: loki
+          access: proxy
+          uid: loki
+          url: http://loki:3100
+          editable: false
+          jsonData:
+            derivedFields:
+              - datasourceUid: tempo
+                matcherRegex: '(?:trace_id|traceID|TraceId)=?([a-f0-9]{32}|[a-f0-9]{16})'
+                name: TraceID
+                url: '$${__value.raw}'
+                urlDisplayLabel: 'View in Tempo'
+
+        - name: Tempo
+          type: tempo
+          access: proxy
+          uid: tempo
+          url: http://tempo:3200
+          editable: false
+          jsonData:
+            httpMethod: GET
+            serviceMap:
+              datasourceUid: prometheus
+            nodeGraph:
+              enabled: true
+            lokiSearch:
+              datasourceUid: loki
+            traceToLogs:
+              datasourceUid: loki
+              mapTagNamesEnabled: true
+              tags:
+                - key: service.name
+                  value: service
+                - key: deployment.environment
+                  value: env
+            traceToMetrics:
+              datasourceUid: prometheus
+
+  grafana_dashboards:
+    content: |
+      apiVersion: 1
+
+      providers:
+        - name: default
+          orgId: 1
+          type: file
+          disableDeletion: false
+          updateIntervalSeconds: 30
+          allowUiUpdates: true
+          options:
+            path: /etc/grafana/provisioning/dashboards
+            foldersFromFilesStructure: true
+
 services:
 
   # ─────────────────────────────────────────────────────────────
@@ -42,9 +288,9 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     restart: unless-stopped
-    command: ["--config=/observability-config/otel-collector.yaml"]
-    volumes:
-      - ./config:/observability-config:ro
+    configs:
+      - source: otel_cfg
+        target: /etc/otelcol-contrib/config.yaml
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"   # External: apps on other servers
       - "${OTEL_HTTP_PORT:-4318}:4318"   # External: apps on other servers (HTTP)
@@ -70,11 +316,13 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.2
     restart: unless-stopped
+    configs:
+      - source: prometheus_cfg
+        target: /etc/prometheus/prometheus.yml
     volumes:
-      - ./config:/observability-config:ro
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/observability-config/prometheus.yml'
+      - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-remote-write-receiver'
       - '--web.enable-lifecycle'
@@ -90,10 +338,12 @@ services:
   loki:
     image: grafana/loki:2.9.7
     restart: unless-stopped
+    configs:
+      - source: loki_cfg
+        target: /etc/loki/config.yaml
     volumes:
-      - ./config:/observability-config:ro
       - loki-data:/loki
-    command: -config.file=/observability-config/loki.yaml
+    command: -config.file=/etc/loki/config.yaml
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
       interval: 10s
@@ -107,10 +357,12 @@ services:
   tempo:
     image: grafana/tempo:2.4.1
     restart: unless-stopped
+    configs:
+      - source: tempo_cfg
+        target: /etc/tempo/config.yaml
     volumes:
-      - ./config:/observability-config:ro
       - tempo-data:/var/tempo
-    command: -config.file=/observability-config/tempo.yaml
+    command: -config.file=/etc/tempo/config.yaml
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready || exit 1"]
       interval: 10s
@@ -133,10 +385,13 @@ services:
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
       - GF_UNIFIED_ALERTING_ENABLED=true
-      - GF_PATHS_PROVISIONING=/observability-config/grafana/provisioning
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/dashboard.yml
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./config:/observability-config:ro
     depends_on:
       prometheus:
         condition: service_healthy
